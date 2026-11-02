@@ -18,12 +18,13 @@ window.__ModuleLoader__.load({
 
     const zh = {
       'page.title': '模拟器验证台',
-      'page.subtitle': '每个会话独占一台测试机，后台跑构建与 UI 测试，完成后提醒你验收。',
-      'page.foot': '验证任务在 Host 进程中运行，不占用当前会话；模拟器截图与日志保存在 DSH 数据目录。',
+      'page.subtitle': '扫描工作区与会话，自动识别会话里发起的模拟器验证，统一查看状态。',
+      'page.foot': '状态来自会话的 tool/call 与 tool/result 事件；验证台只观测，不启动模拟器、不占用会话。',
       'page.devices': '可用设备',
       'page.free': '空闲',
       'page.sessions': '个会话',
       'page.bound': '个已绑定',
+      'page.verifying': '个正在验证',
       'page.workspaces': '个工作区',
       'group.running': '个进行中',
       'lock.locked': '机型已锁定',
@@ -35,6 +36,11 @@ window.__ModuleLoader__.load({
       'toast.session': '会话',
       'toast.duration': '用时',
       'field.device': '测试机',
+      'assign.label': '指定机型',
+      'assign.none': '未指定',
+      'warn.mismatch': '机型不符',
+      'warn.conflict': '设备冲突',
+      'warn.assumed': '按指定机型',
       'field.mode': '验证方式',
       'field.scheme': 'Scheme',
       'field.command': '命令',
@@ -57,8 +63,27 @@ window.__ModuleLoader__.load({
       'action.less': '收起',
       'action.retry': '重试',
       'action.dismiss': '关闭',
-      'filter.assigned': '只看已绑定设备',
+      'filter.assigned': '只看正在验证',
+      'sort.label': '排序',
+      'sort.activity': '最近活动',
+      'sort.created': '创建时间',
+      'sort.title': '会话名称',
+      'sort.device': '绑定机型',
+      'sort.status': '运行状态',
+      'sort.manual': '默认顺序',
+      'sort.drag': '拖动排序',
+      'sort.dragGroup': '拖动调整目录顺序',
+      'sort.help.manual': '默认顺序：按你手动排列的会话与目录顺序显示',
+      'sort.help.activity': '最近活动：运行中优先，其次是已绑定、有历史，再按最近任务时间',
+      'sort.help.created': '创建时间：新会话在前',
+      'sort.help.title': '会话名称：按标题升序',
+      'sort.help.device': '绑定机型：按机型名升序，未绑定排最后',
+      'sort.help.status': '运行状态：运行中 > 排队 > 失败 > 通过 > 停止 > 空闲',
+      'sort.help.sessionDrag': '拖动调整会话顺序（仅当前工作区）',
+      'sort.help.groupDrag': '拖动调整目录顺序',
       'status.idle': '空闲',
+      'status.unverified': '未验证',
+      'status.blocked': '已拦截',
       'status.queued': '排队中',
       'status.running': '运行中',
       'status.passed': '通过',
@@ -73,25 +98,30 @@ window.__ModuleLoader__.load({
       'step.launch': '启动 App',
       'step.screenshot': '截图',
       'step.command': '执行命令',
+      'step.simctl': '模拟器操作',
       'step.done': '完成',
       'job.elapsed': '用时',
       'job.exit': '退出码',
       'job.noLog': '暂无日志',
       'job.fullLog': '打开完整日志',
       'job.shotAlt': '模拟器截图',
-      'settings.title': '通知与自动化',
+      'settings.title': '通知',
       'settings.notify': '完成时发送系统通知',
       'settings.autoOpen': '完成后自动打开模拟器',
       'settings.autoAssign': '未绑定设备时自动分配',
       'toast.passed': '验证通过，去模拟器看看',
       'toast.failed': '验证失败',
       'toast.stopped': '验证已停止',
+      'toast.blocked': '被机型约束拦截',
       'toast.view': '查看',
       'toast.open': '打开模拟器',
       'toast.dismiss': '知道了',
       'empty.title': '还没有可分配的会话',
       'empty.body': '在左侧新建一个会话后，这里会列出它并自动绑定一台空闲模拟器。',
-      'empty.run': '还没有绑定的设备；点「开始验证」会自动挑一台空闲测试机。',
+      'empty.observed': '等待会话发起验证',
+      'device.unknown': '模拟器（未识别）',
+      'empty.run': '这个会话还没有发起过模拟器验证；在会话里运行 xcodebuild / simctl 后会自动出现状态。',
+      'empty.filtered': '当前没有正在验证的会话。',
       'error.load': '无法读取验证台状态',
       'error.action': '操作失败',
       'time.justNow': '刚刚',
@@ -101,12 +131,13 @@ window.__ModuleLoader__.load({
 
     const en = {
       'page.title': 'Simulator Lab',
-      'page.subtitle': 'One dedicated test device per session, builds and UI tests in the background, with a reminder to inspect the device when a run finishes.',
-      'page.foot': 'Runs in the Host process, so the conversation is never blocked. Screenshots and logs stay in the DSH data directory.',
+      'page.subtitle': 'Scans workspaces and sessions, detects simulator verification started from a session, and shows one live status.',
+      'page.foot': 'State is derived from the session tool/call and tool/result events; this panel observes only and never starts a simulator.',
       'page.devices': 'devices',
       'page.free': 'free',
       'page.sessions': 'sessions',
       'page.bound': 'bound',
+      'page.verifying': 'verifying',
       'page.workspaces': 'workspaces',
       'group.running': 'running',
       'lock.locked': 'model locked',
@@ -118,6 +149,11 @@ window.__ModuleLoader__.load({
       'toast.session': 'Session',
       'toast.duration': 'Duration',
       'field.device': 'Device',
+      'assign.label': 'Assigned device',
+      'assign.none': 'Not assigned',
+      'warn.mismatch': 'Device mismatch',
+      'warn.conflict': 'Device conflict',
+      'warn.assumed': 'Assigned device assumed',
       'field.mode': 'Mode',
       'field.scheme': 'Scheme',
       'field.command': 'Command',
@@ -140,8 +176,27 @@ window.__ModuleLoader__.load({
       'action.less': 'Collapse',
       'action.retry': 'Retry',
       'action.dismiss': 'Dismiss',
-      'filter.assigned': 'Only bound devices',
+      'filter.assigned': 'Only running',
+      'sort.label': 'Sort',
+      'sort.activity': 'Recent activity',
+      'sort.created': 'Created',
+      'sort.title': 'Session name',
+      'sort.device': 'Device',
+      'sort.status': 'Status',
+      'sort.manual': 'Default order',
+      'sort.drag': 'Drag to reorder',
+      'sort.dragGroup': 'Drag to reorder workspace',
+      'sort.help.manual': 'Default order: your manually arranged session and workspace order',
+      'sort.help.activity': 'Recent activity: running first, then bound, then history, by latest run',
+      'sort.help.created': 'Created: newest session first',
+      'sort.help.title': 'Session name: ascending by title',
+      'sort.help.device': 'Device: ascending by model, unbound last',
+      'sort.help.status': 'Status: running > queued > failed > passed > stopped > idle',
+      'sort.help.sessionDrag': 'Drag to reorder sessions (same workspace only)',
+      'sort.help.groupDrag': 'Drag to reorder workspaces',
       'status.idle': 'Idle',
+      'status.unverified': 'Not verified',
+      'status.blocked': 'Blocked',
       'status.queued': 'Queued',
       'status.running': 'Running',
       'status.passed': 'Passed',
@@ -156,25 +211,30 @@ window.__ModuleLoader__.load({
       'step.launch': 'Launching app',
       'step.screenshot': 'Screenshot',
       'step.command': 'Running command',
+      'step.simctl': 'Simulator',
       'step.done': 'Done',
       'job.elapsed': 'took',
       'job.exit': 'exit',
       'job.noLog': 'No log yet',
       'job.fullLog': 'Open full log',
       'job.shotAlt': 'Simulator screenshot',
-      'settings.title': 'Notifications & automation',
+      'settings.title': 'Notifications',
       'settings.notify': 'Send a system notification when a run finishes',
       'settings.autoOpen': 'Open the simulator automatically when done',
       'settings.autoAssign': 'Auto-assign a device when none is bound',
       'toast.passed': 'Verification passed — take a look',
       'toast.failed': 'Verification failed',
       'toast.stopped': 'Verification stopped',
+      'toast.blocked': 'Blocked by device constraint',
       'toast.view': 'View',
       'toast.open': 'Open simulator',
       'toast.dismiss': 'Dismiss',
       'empty.title': 'No sessions to assign yet',
       'empty.body': 'Create a session on the left; it will appear here and can claim a free simulator.',
-      'empty.run': 'No device bound yet — Start verification picks a free test device automatically.',
+      'empty.observed': 'Waiting for a session run',
+      'device.unknown': 'Simulator (unknown)',
+      'empty.run': 'No simulator verification from this session yet; run xcodebuild / simctl in the session and the status appears here.',
+      'empty.filtered': 'No verification is running.',
       'error.load': 'Cannot read Simulator Lab state',
       'error.action': 'Action failed',
       'time.justNow': 'just now',
@@ -191,6 +251,8 @@ window.__ModuleLoader__.load({
 .iosims-sub{margin:6px 0 0;font-size:12.5px;color:var(--dsw-alias-label-secondary);max-width:620px}
 .iosims-stats{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--dsw-alias-label-secondary);flex-wrap:wrap;justify-content:flex-end}
 .iosims-stat b{color:var(--dsw-alias-label-primary);font-weight:600}
+.iosims-sort{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.iosims-sort-select{height:28px;min-width:118px;max-width:160px;font-size:12px}
 .iosims-btn{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:8px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s ease,border-color .12s ease,opacity .12s ease}
 .iosims-btn:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l2)}
 .iosims-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
@@ -200,12 +262,33 @@ window.__ModuleLoader__.load({
 .iosims-btn.danger{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary);background:transparent}
 .iosims-btn.ghost{border-color:transparent;background:transparent;color:var(--dsw-alias-label-secondary)}
 .iosims-btn.small{padding:4px 9px;font-size:11.5px;border-radius:7px}
-.iosims-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.iosims-filter{display:flex;align-items:center;gap:11px;padding:12px 2px 14px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.iosims-filter-icon{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);flex:none}
+.iosims-filter-text{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.iosims-filter-title{font-size:13px;font-weight:650;color:var(--dsw-alias-label-primary)}
+.iosims-filter-sub{font-size:11.5px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iosims-switch{position:relative;display:inline-flex;align-items:center;cursor:pointer;flex:none}
+.iosims-switch input{position:absolute;width:1px;height:1px;opacity:0;margin:0;pointer-events:none}
+.iosims-switch-track{width:36px;height:20px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);display:inline-flex;align-items:center;padding:2px;transition:background .15s ease,border-color .15s ease}
+.iosims-switch-thumb{width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-secondary);transition:transform .15s ease,background .15s ease}
+.iosims-switch input:checked + .iosims-switch-track{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.iosims-switch input:checked + .iosims-switch-track .iosims-switch-thumb{transform:translateX(16px);background:#fff}
+.iosims-switch input:focus-visible + .iosims-switch-track{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .iosims-check{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;user-select:none}
 .iosims-check input{accent-color:var(--dsw-alias-brand-primary);margin:0}
-.iosims-groups{display:flex;flex-direction:column;gap:18px}
-.iosims-group{display:flex;flex-direction:column;gap:8px;min-width:0}
-.iosims-group-head{display:flex;align-items:center;gap:8px;width:100%;padding:2px 2px 4px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;text-align:left;min-width:0}
+.iosims-groups{display:flex;flex-direction:column;gap:0}
+.iosims-group{display:flex;flex-direction:column;gap:8px;min-width:0;padding:14px 0 16px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.iosims-group-head-row{position:relative;display:flex;align-items:center;gap:4px;border-radius:8px;transition:background .15s ease,opacity .15s ease}
+.iosims-group-head-row[data-dragging="true"]{opacity:.5;background:var(--dsw-alias-bg-layer-2)}
+.iosims-group-head-row[data-drop="before"],.iosims-group-head-row[data-drop="after"]{background:var(--dsw-alias-bg-layer-1)}
+.iosims-group-head-row[data-drop="before"]::before,.iosims-group-head-row[data-drop="after"]::after{content:'';position:absolute;left:2px;right:2px;height:2px;border-radius:2px;background:var(--dsw-alias-brand-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary) 18%,transparent);pointer-events:none;z-index:3}
+.iosims-group-head-row[data-drop="before"]::before{top:-6px}
+.iosims-group-head-row[data-drop="after"]::after{bottom:-6px}
+.iosims-group-grip{display:inline-flex;align-items:center;justify-content:center;width:14px;height:24px;border-radius:5px;color:var(--dsw-alias-label-secondary);cursor:grab;flex:none;opacity:.7;transition:background .12s ease,color .12s ease,opacity .12s ease}
+.iosims-group-grip:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);opacity:1}
+.iosims-group-grip:active{cursor:grabbing}
+.iosims-group-grip:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.iosims-group-head{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:2px 2px 4px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;text-align:left}
 .iosims-group-head:hover .iosims-group-name{color:var(--dsw-alias-label-primary)}
 .iosims-chevron{display:inline-flex;width:12px;color:var(--dsw-alias-label-secondary);transition:transform .15s ease;transform:rotate(0deg);flex:none}
 .iosims-chevron[data-open="true"]{transform:rotate(90deg)}
@@ -215,17 +298,26 @@ window.__ModuleLoader__.load({
 .iosims-group-count{flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:10.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center}
 .iosims-lock{color:var(--dsw-alias-label-primary);font-weight:600}
 .iosims-list{display:flex;flex-direction:column;gap:10px}
-.iosims-row{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:11px;transition:border-color .15s ease}
+.iosims-row{position:relative;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:11px;transition:border-color .15s ease,background .15s ease,opacity .15s ease,transform .15s ease}
 .iosims-row:hover{border-color:var(--dsw-alias-border-l2)}
 .iosims-row[data-status="running"]{border-color:var(--dsw-alias-brand-primary)}
 .iosims-row[data-status="failed"]{border-color:var(--dsw-alias-state-error-primary)}
 .iosims-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
 .iosims-session{display:flex;align-items:flex-start;gap:9px;min-width:0}
+.iosims-grip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:22px;border-radius:5px;color:var(--dsw-alias-label-secondary);cursor:grab;flex:none;margin-top:1px;opacity:.8;transition:background .12s ease,color .12s ease,opacity .12s ease}
+.iosims-grip:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);opacity:1}
+.iosims-grip:active{cursor:grabbing}
+.iosims-grip:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.iosims-row[data-dragging="true"]{opacity:.5;transform:scale(.997);border-style:dashed;background:var(--dsw-alias-bg-layer-2);box-shadow:0 10px 24px rgba(0,0,0,.12)}
+.iosims-row[data-drop="before"],.iosims-row[data-drop="after"]{background:var(--dsw-alias-bg-layer-2)}
+.iosims-row[data-drop="before"]::before,.iosims-row[data-drop="after"]::after{content:'';position:absolute;left:8px;right:8px;height:2px;border-radius:2px;background:var(--dsw-alias-brand-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary) 18%,transparent);pointer-events:none;z-index:3}
+.iosims-row[data-drop="before"]::before{top:-6px}
+.iosims-row[data-drop="after"]::after{bottom:-6px}
 .iosims-dot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:none;background:var(--dsw-alias-state-idle-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-idle-primary) 18%,transparent)}
 .iosims-dot[data-status="running"]{background:var(--dsw-alias-brand-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary) 20%,transparent);animation:iosims-pulse 1.6s ease-in-out infinite}
 .iosims-dot[data-status="passed"]{background:var(--dsw-alias-state-success-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-success-primary) 18%,transparent)}
 .iosims-dot[data-status="failed"]{background:var(--dsw-alias-state-error-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-error-primary) 18%,transparent)}
-.iosims-dot[data-status="stopped"],.iosims-dot[data-status="interrupted"]{background:var(--dsw-alias-state-warn-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 18%,transparent)}
+.iosims-dot[data-status="stopped"],.iosims-dot[data-status="interrupted"],.iosims-dot[data-status="blocked"]{background:var(--dsw-alias-state-warn-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 18%,transparent)}
 @keyframes iosims-pulse{0%,100%{opacity:1}50%{opacity:.45}}
 .iosims-session-text{min-width:0}
 .iosims-session-title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px}
@@ -234,8 +326,10 @@ window.__ModuleLoader__.load({
 .iosims-chip[data-status="running"]{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent)}
 .iosims-chip[data-status="passed"]{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent)}
 .iosims-chip[data-status="failed"]{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent)}
-.iosims-chip[data-status="stopped"],.iosims-chip[data-status="interrupted"]{color:var(--dsw-alias-state-warn-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent)}
-.iosims-controls{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap}
+.iosims-chip[data-status="stopped"],.iosims-chip[data-status="interrupted"],.iosims-chip[data-status="blocked"]{color:var(--dsw-alias-state-warn-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent)}
+.iosims-assign{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.iosims-assign-label{font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--dsw-alias-label-secondary);text-transform:uppercase}
+.iosims-assign-select{height:28px;min-width:170px;max-width:280px;font-size:12px}
 .iosims-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .iosims-field > span{font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--dsw-alias-label-secondary);text-transform:uppercase}
 .iosims-select,.iosims-input{height:30px;border:1px solid var(--dsw-alias-border-l1);border-radius:7px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);padding:0 8px;font:inherit;font-size:12.5px;min-width:120px;max-width:230px}
@@ -254,14 +348,17 @@ window.__ModuleLoader__.load({
 .iosims-empty{border:1px dashed var(--dsw-alias-border-l2);border-radius:12px;padding:28px 22px;text-align:center}
 .iosims-empty-title{font-size:13.5px;font-weight:600;margin:0 0 6px}
 .iosims-empty-body{margin:0 auto;font-size:12.5px;color:var(--dsw-alias-label-secondary);max-width:460px}
-.iosims-more{align-self:center}
-.iosims-settings{border-top:1px solid var(--dsw-alias-border-l1);padding-top:14px;display:flex;flex-direction:column;gap:9px}
+.iosims-more{align-self:center;margin:16px 0 2px}
+.iosims-settings{border-top:1px solid var(--dsw-alias-border-l1);margin-top:4px;padding-top:16px;display:flex;flex-direction:column;gap:9px}
 .iosims-settings-title{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary)}
 .iosims-settings-row{display:flex;gap:18px;flex-wrap:wrap}
 .iosims-foot{font-size:11.5px;color:var(--dsw-alias-label-secondary);line-height:1.6}
+.iosims-command{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .iosims-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;color:inherit}
 .iosims-icon svg{display:block}
 .iosims-icon-dot{position:absolute;top:-1px;right:-1px;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-error-primary);box-shadow:0 0 0 2px var(--dsw-specific-sidebar-fill)}
+.iosims-tip{position:fixed;z-index:90;max-width:280px;padding:8px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.55;box-shadow:0 10px 26px rgba(0,0,0,.22);pointer-events:none;animation:iosims-tip-in .12s ease-out}
+@keyframes iosims-tip-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .iosims-toast-wrap{position:fixed;right:22px;bottom:22px;z-index:60;display:flex;flex-direction:column;gap:10px;pointer-events:none}
 .iosims-toast{pointer-events:auto;width:380px;max-width:calc(100vw - 44px);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);border-radius:12px;padding:13px 14px;box-shadow:0 18px 44px rgba(0,0,0,.28);display:flex;flex-direction:column;gap:7px;animation:iosims-rise .18s ease-out}
 @keyframes iosims-rise{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -464,6 +561,38 @@ window.__ModuleLoader__.load({
       return (session.activeJob ? 3 : 0) + (session.assignment ? 2 : 0) + (session.lastJob ? 1 : 0)
     }
 
+    const SORT_RANK = { running: 0, queued: 1, failed: 2, passed: 3, stopped: 4, interrupted: 5, idle: 6 }
+
+    function compareSessions(left, right, sortBy, manualOrder = []) {
+      if (sortBy === 'manual') {
+        const index = (session) => {
+          const at = manualOrder.indexOf(session.id)
+          return at === -1 ? Number.MAX_SAFE_INTEGER : at
+        }
+        const delta = index(left) - index(right)
+        if (delta) return delta
+        return (right.createdAt ?? 0) - (left.createdAt ?? 0)
+      }
+      if (sortBy === 'created') return (right.createdAt ?? 0) - (left.createdAt ?? 0)
+      if (sortBy === 'title') return (left.title || '').localeCompare(right.title || '', 'zh-Hans-CN')
+      if (sortBy === 'device') {
+        const leftDevice = left.assignment?.model ?? '\uffff'
+        const rightDevice = right.assignment?.model ?? '\uffff'
+        return (
+          leftDevice.localeCompare(rightDevice, 'zh-Hans-CN') ||
+          (left.assignment?.name ?? '').localeCompare(right.assignment?.name ?? '', 'zh-Hans-CN')
+        )
+      }
+      if (sortBy === 'status') {
+        const delta = (SORT_RANK[statusOf(left)] ?? 9) - (SORT_RANK[statusOf(right)] ?? 9)
+        if (delta) return delta
+      } else {
+        const delta = scoreSession(right) - scoreSession(left)
+        if (delta) return delta
+      }
+      return (right.lastJob?.startedAt ?? right.createdAt ?? 0) - (left.lastJob?.startedAt ?? left.createdAt ?? 0)
+    }
+
     function shortenHome(value) {
       if (!value) return ''
       return value.replace(/^\/Users\/[^/]+/, '~')
@@ -486,6 +615,9 @@ window.__ModuleLoader__.load({
       collapsed: [],
       openLogs: [],
       hiddenShots: [],
+      sortBy: 'manual',
+      manualOrder: [],
+      groupOrder: [],
       updatedAt: 0,
     }
 
@@ -498,6 +630,14 @@ window.__ModuleLoader__.load({
       } catch {
         return null
       }
+    }
+
+    function gripIcon() {
+      return h(
+        'svg',
+        { width: 10, height: 14, viewBox: '0 0 10 14', fill: 'currentColor', 'aria-hidden': true },
+        [2, 7, 12].flatMap((cy) => [2, 8].map((cx) => h('circle', { key: `${cx}-${cy}`, cx, cy, r: 1.15 }))),
+      )
     }
 
     // ------------------------------------------------------------------ icon
@@ -553,7 +693,7 @@ window.__ModuleLoader__.load({
     }
 
     function JobDetail(props) {
-      const { job, t, store, now, logOpen, shotOpen, onToggleLog, onToggleShot } = props
+      const { job, t, now, logOpen, shotOpen, onToggleLog, onToggleShot } = props
       const running = job.status === 'running' || job.status === 'queued'
       const elapsed = running ? now - job.startedAt : job.durationMs
       return h(
@@ -591,6 +731,9 @@ window.__ModuleLoader__.load({
               : null,
           ),
         ),
+        job.command
+          ? h('div', { className: 'iosims-command', title: job.command }, job.command)
+          : null,
         job.detail ? h('div', { className: 'iosims-foot' }, job.detail) : null,
         job.error
           ? h('div', { className: 'iosims-error-text', style: { color: 'var(--dsw-alias-state-error-primary)' } }, job.error)
@@ -600,17 +743,19 @@ window.__ModuleLoader__.load({
               'div',
               null,
               h('pre', { className: 'iosims-log' }, job.tail || t('job.noLog')),
-              h(
-                'a',
-                {
-                  className: 'iosims-btn small',
-                  style: { marginTop: 6, display: 'inline-flex' },
-                  href: job.logUrl,
-                  target: '_blank',
-                  rel: 'noreferrer',
-                },
-                t('job.fullLog'),
-              ),
+              job.logUrl
+                ? h(
+                    'a',
+                    {
+                      className: 'iosims-btn small',
+                      style: { marginTop: 6, display: 'inline-flex' },
+                      href: job.logUrl,
+                      target: '_blank',
+                      rel: 'noreferrer',
+                    },
+                    t('job.fullLog'),
+                  )
+                : null,
             )
           : null,
         shotOpen && job.shot
@@ -624,32 +769,30 @@ window.__ModuleLoader__.load({
     }
 
     function SessionRow(props) {
-      const { session, devices, store, t, now, layoutSelect, ui, onUi } = props
+      const {
+        session,
+        devices,
+        store,
+        t,
+        now,
+        ui,
+        onUi,
+        manual,
+        dragging,
+        sessionDragActive,
+        drop,
+        onDragStart,
+        onDragEnd,
+        onDragOverRow,
+        onDragLeaveRow,
+        onDropRow,
+        onMoveBy,
+        onTip,
+        onTipMove,
+        onTipHide,
+      } = props
       const job = jobOf(session)
-      const running = Boolean(session.activeJob)
-      const [mode, setMode] = React.useState(session.runOptions?.mode ?? job?.mode ?? 'install')
-      const [scheme, setScheme] = React.useState(session.runOptions?.scheme ?? job?.scheme ?? '')
-      const [command, setCommand] = React.useState(session.runOptions?.command ?? '')
-      const [busy, setBusy] = React.useState(false)
-      const [error, setError] = React.useState(null)
       const status = statusOf(session)
-      const deviceUdid = session.assignment?.udid ?? ''
-
-      async function run(task) {
-        setBusy(true)
-        setError(null)
-        try {
-          await task()
-        } catch (failure) {
-          setError(failure?.message ?? String(failure))
-        } finally {
-          setBusy(false)
-        }
-      }
-
-      const boundToOther = new Set(
-        devices.filter((device) => device.boundTo && device.boundTo.sessionId !== session.id).map((device) => device.udid),
-      )
 
       const toggleUiList = (key, id) => {
         const list = new Set(ui[key] ?? [])
@@ -660,13 +803,67 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { className: 'iosims-row', 'data-status': status },
+        {
+          className: 'iosims-row',
+          'data-status': status,
+          'data-dragging': dragging ? 'true' : undefined,
+          'data-drop': drop ? (drop.after ? 'after' : 'before') : undefined,
+          onDragOver: (event) => {
+            if (!manual || !sessionDragActive) return
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'move'
+            const rect = event.currentTarget.getBoundingClientRect()
+            onDragOverRow(event.clientY > rect.top + rect.height / 2)
+          },
+          onDragLeave: (event) => {
+            if (!manual || !sessionDragActive) return
+            if (event.currentTarget.contains(event.relatedTarget)) return
+            onDragLeaveRow()
+          },
+          onDrop: (event) => {
+            if (!manual || !sessionDragActive) return
+            event.preventDefault()
+            const rect = event.currentTarget.getBoundingClientRect()
+            onDropRow(event.clientY > rect.top + rect.height / 2)
+          },
+        },
         h(
           'div',
           { className: 'iosims-row-head' },
           h(
             'div',
             { className: 'iosims-session' },
+            manual
+              ? h(
+                  'span',
+                  {
+                    className: 'iosims-grip',
+                    draggable: true,
+                    role: 'button',
+                    tabIndex: 0,
+                    title: t('sort.drag'),
+                    'aria-label': t('sort.drag'),
+                    onMouseEnter: (event) => onTip(event, t('sort.help.sessionDrag')),
+                    onMouseMove: onTipMove,
+                    onMouseLeave: onTipHide,
+                    onDragStart: (event) => {
+                      onTipHide()
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('text/plain', session.id)
+                      const row = event.currentTarget.closest('.iosims-row')
+                      if (row) event.dataTransfer.setDragImage(row, 28, 24)
+                      onDragStart()
+                    },
+                    onDragEnd: onDragEnd,
+                    onKeyDown: (event) => {
+                      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                      event.preventDefault()
+                      onMoveBy(event.key === 'ArrowUp' ? -1 : 1)
+                    },
+                  },
+                  gripIcon(),
+                )
+              : null,
             h('span', { className: 'iosims-dot', 'data-status': status, 'aria-hidden': true }),
             h(
               'div',
@@ -676,19 +873,10 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'iosims-session-meta', title: session.cwd },
                 session.assignment
-                  ? h(
-                      React.Fragment,
-                      null,
-                      h(
-                        'span',
-                        { className: 'iosims-lock' },
-                        session.assignment.auto ? t('lock.auto') : t('lock.locked'),
-                      ),
-                      ` · ${session.assignment.model} · ${session.assignment.runtime} · ${
-                        session.assignment.state === 'Booted' ? t('device.booted') : t('device.shutdown')
-                      }`,
-                    )
-                  : t('empty.run'),
+                  ? `${session.assignment.model} · ${session.assignment.runtime}`
+                  : job
+                    ? t('device.unknown')
+                    : t('empty.observed'),
               ),
             ),
           ),
@@ -699,139 +887,60 @@ window.__ModuleLoader__.load({
                 job.status === 'running' ? `${t('status.running')} · ${t(`step.${job.step}`)}` : t(`status.${job.status}`),
                 job.status !== 'running' && job.endedAt ? ` · ${relativeTime(t, job.endedAt, now)}` : '',
               )
-            : h('span', { className: 'iosims-chip' }, t('status.idle')),
+            : h('span', { className: 'iosims-chip' }, t('status.unverified')),
         ),
         h(
           'div',
-          { className: 'iosims-controls' },
+          { className: 'iosims-assign' },
+          h('span', { className: 'iosims-assign-label' }, t('assign.label')),
           h(
-            'label',
-            { className: 'iosims-field' },
-            h('span', null, t('field.device')),
-            h(
-              'select',
-              {
-                className: 'iosims-select',
-                value: deviceUdid,
-                disabled: running || busy,
-                onChange: (event) => run(() => store.act({ action: 'assign', sessionId: session.id, deviceUdid: event.target.value || null })),
+            'select',
+            {
+              className: 'iosims-select iosims-assign-select',
+              value: session.assignment?.udid ?? '',
+              'aria-label': t('assign.label'),
+              onChange: (event) => {
+                const value = event.target.value || null
+                store.act({ action: 'assign', sessionId: session.id, deviceUdid: value }).catch(() => {})
               },
-              h('option', { value: '' }, t('device.auto')),
-              session.assignment && !devices.some((device) => device.udid === session.assignment.udid)
-                ? h(
-                    'option',
-                    { value: session.assignment.udid },
-                    `${session.assignment.name} · ${session.assignment.runtime} · ${t('status.interrupted')}`,
-                  )
-                : null,
-              devices.map((device) =>
-                h(
-                  'option',
-                  {
-                    key: device.udid,
-                    value: device.udid,
-                    disabled: boundToOther.has(device.udid) || device.busy,
-                  },
-                  `${device.name} · ${device.runtime} · ${device.booted ? t('device.booted') : t('device.shutdown')}` +
-                    (boundToOther.has(device.udid) ? ` · ${t('device.other')}` : ''),
-                ),
-              ),
-            ),
-          ),
-          h(
-            'label',
-            { className: 'iosims-field' },
-            h('span', null, t('field.mode')),
-            h(
-              'select',
-              {
-                className: 'iosims-select',
-                value: mode,
-                disabled: running || busy,
-                onChange: (event) => setMode(event.target.value),
-              },
-              h('option', { value: 'install' }, t('mode.install')),
-              h('option', { value: 'test' }, t('mode.test')),
-              h('option', { value: 'build' }, t('mode.build')),
-              h('option', { value: 'command' }, t('mode.command')),
-            ),
-          ),
-          mode === 'command'
-            ? h(
-                'label',
-                { className: 'iosims-field', style: { flex: 1 } },
-                h('span', null, t('field.command')),
-                h('input', {
-                  className: 'iosims-input',
-                  value: command,
-                  disabled: running || busy,
-                  placeholder: 'make verify',
-                  onChange: (event) => setCommand(event.target.value),
-                  spellCheck: false,
-                }),
-              )
-            : h(
-                'label',
-                { className: 'iosims-field' },
-                h('span', null, t('field.scheme')),
-                h('input', {
-                  className: 'iosims-input scheme',
-                  value: scheme,
-                  disabled: running || busy,
-                  placeholder: 'auto',
-                  onChange: (event) => setScheme(event.target.value),
-                  spellCheck: false,
-                }),
-              ),
-          h(
-            'div',
-            { className: 'iosims-buttons' },
-            h(
-              'button',
-              {
-                className: 'iosims-btn primary',
-                disabled: running || busy || (mode === 'command' && !command.trim()),
-                onClick: () =>
-                  run(() =>
-                    store.act({
-                      action: 'run',
-                      sessionId: session.id,
-                      mode,
-                      scheme: scheme.trim() || undefined,
-                      command: command.trim() || undefined,
-                    }),
-                  ),
-              },
-              running ? t('action.running') : t('action.run'),
-            ),
-            h(
-              'button',
-              {
-                className: 'iosims-btn',
-                disabled: busy || !session.assignment,
-                onClick: () => run(() => store.act({ action: 'open', sessionId: session.id })),
-              },
-              t('action.open'),
-            ),
-            running
+            },
+            h('option', { value: '' }, t('assign.none')),
+            session.assignment && !devices.some((device) => device.udid === session.assignment.udid)
               ? h(
-                  'button',
-                  {
-                    className: 'iosims-btn danger',
-                    disabled: busy,
-                    onClick: () => run(() => store.act({ action: 'stop', jobId: session.activeJob.id })),
-                  },
-                  t('action.stop'),
+                  'option',
+                  { value: session.assignment.udid },
+                  `${session.assignment.model} · ${session.assignment.runtime} · ${t('status.interrupted')}`,
                 )
               : null,
+            devices.map((device) =>
+              h(
+                'option',
+                {
+                  key: device.udid,
+                  value: device.udid,
+                  disabled:
+                    Boolean(device.assignedTo && device.assignedTo.sessionId !== session.id) ||
+                    Boolean(device.busy),
+                },
+                `${device.model ?? device.name} · ${device.runtime}` +
+                  (device.assignedTo && device.assignedTo.sessionId !== session.id
+                    ? ` · ${device.assignedTo.title}`
+                    : ''),
+              ),
+            ),
           ),
+          job?.mismatch
+            ? h('span', { className: 'iosims-chip', 'data-status': 'failed' }, t('warn.mismatch'))
+            : null,
+          job?.conflict
+            ? h('span', { className: 'iosims-chip', 'data-status': 'failed' }, t('warn.conflict'))
+            : null,
+          job?.assumedDevice ? h('span', { className: 'iosims-chip' }, t('warn.assumed')) : null,
         ),
-        error ? h('div', { className: 'iosims-error-text', style: { color: 'var(--dsw-alias-state-error-primary)' } }, error) : null,
         job
           ? h(JobDetail, {
               job,
               t,
-              store,
               now,
               logOpen: (ui.openLogs ?? []).includes(job.id),
               shotOpen: Boolean(job.shot) && !(ui.hiddenShots ?? []).includes(job.id),
@@ -872,28 +981,7 @@ window.__ModuleLoader__.load({
             }),
             t('settings.notify'),
           ),
-          h(
-            'label',
-            { className: 'iosims-check' },
-            h('input', {
-              type: 'checkbox',
-              checked: Boolean(settings.autoOpen),
-              disabled: busy,
-              onChange: (event) => toggle('autoOpen', event.target.checked),
-            }),
-            t('settings.autoOpen'),
-          ),
-          h(
-            'label',
-            { className: 'iosims-check' },
-            h('input', {
-              type: 'checkbox',
-              checked: Boolean(settings.autoAssign),
-              disabled: busy,
-              onChange: (event) => toggle('autoAssign', event.target.checked),
-            }),
-            t('settings.autoAssign'),
-          ),
+
         ),
       )
     }
@@ -904,6 +992,11 @@ window.__ModuleLoader__.load({
       const state = snap.state
       const [now, setNow] = React.useState(Date.now())
       const [busy, setBusy] = React.useState(false)
+      const [dragId, setDragId] = React.useState(null)
+      const [dragGroupKey, setDragGroupKey] = React.useState(null)
+      const [sessionDrop, setSessionDrop] = React.useState(null)
+      const [groupDrop, setGroupDrop] = React.useState(null)
+      const [tip, setTip] = React.useState(null)
       const localUi = React.useMemo(() => readUi(), [])
       const [ui, setUi] = React.useState(() => ({ ...UI_DEFAULTS, ...(localUi ?? {}) }))
       const uiHydrated = React.useRef(false)
@@ -947,12 +1040,9 @@ window.__ModuleLoader__.load({
       const sessions = state?.sessions ?? []
       const free = devices.filter((device) => !device.boundTo && !device.busy).length
       const running = sessions.filter((session) => session.activeJob).length
-      const filtered = ui.onlyAssigned ? sessions.filter((session) => session.assignment) : sessions
-      const sorted = filtered.slice().sort((left, right) => {
-        const delta = scoreSession(right) - scoreSession(left)
-        if (delta) return delta
-        return (right.lastJob?.startedAt ?? right.createdAt ?? 0) - (left.lastJob?.startedAt ?? left.createdAt ?? 0)
-      })
+      const filtered = ui.onlyAssigned ? sessions.filter((session) => session.activeJob) : sessions
+      const sortBy = ui.sortBy ?? 'activity'
+      const sorted = filtered.slice().sort((left, right) => compareSessions(left, right, sortBy, ui.manualOrder ?? []))
       const visible = ui.showAll ? sorted : sorted.slice(0, 12)
       const workspaceCount = new Set(filtered.map((session) => session.workspace || session.cwd || '')).size
 
@@ -974,8 +1064,15 @@ window.__ModuleLoader__.load({
         group.sessions.push(session)
       }
       groups.sort((left, right) => {
-        const score = (group) => Math.max(...group.sessions.map(scoreSession))
-        return score(right) - score(left) || right.sessions.length - left.sessions.length
+        if (sortBy === 'title') return left.name.localeCompare(right.name, 'zh-Hans-CN')
+        if (sortBy === 'manual') {
+          const index = (group) => {
+            const at = (ui.groupOrder ?? []).indexOf(group.key)
+            return at === -1 ? Number.MAX_SAFE_INTEGER : at
+          }
+          return index(left) - index(right) || left.name.localeCompare(right.name, 'zh-Hans-CN')
+        }
+        return compareSessions(left.sessions[0], right.sessions[0], sortBy, ui.manualOrder ?? [])
       })
 
       const toggleGroup = (key) => {
@@ -984,6 +1081,118 @@ window.__ModuleLoader__.load({
         else next.add(key)
         updateUi({ collapsed: [...next].slice(-200) })
       }
+
+      const changeSort = (value) => {
+        if (value === 'manual') {
+          // Entering the default order should not jump the list: seed both
+          // orders from the arrangement the user is currently looking at.
+          const next = { sortBy: 'manual' }
+          if (!(ui.manualOrder ?? []).length) {
+            const order = sorted.map((session) => session.id)
+            for (const session of sessions) if (!order.includes(session.id)) order.push(session.id)
+            next.manualOrder = order
+          }
+          if (!(ui.groupOrder ?? []).length) next.groupOrder = groups.map((group) => group.key)
+          updateUi(next)
+        } else {
+          updateUi({ sortBy: value })
+        }
+      }
+
+      const reorderSession = (sourceId, targetId, after) => {
+        if (!sourceId || !targetId || sourceId === targetId) return
+        const source = sessions.find((session) => session.id === sourceId)
+        const target = sessions.find((session) => session.id === targetId)
+        // Manual reordering stays inside one workspace group; a cross-group drop
+        // would silently move a session's position relative to unrelated rows.
+        if (!source || !target || (source.workspace || '') !== (target.workspace || '')) return
+        const known = new Set(sessions.map((session) => session.id))
+        const base = (ui.manualOrder ?? []).filter((id) => known.has(id))
+        for (const session of sorted) if (!base.includes(session.id)) base.push(session.id)
+        for (const session of sessions) if (!base.includes(session.id)) base.push(session.id)
+        const from = base.indexOf(sourceId)
+        if (from === -1) return
+        base.splice(from, 1)
+        let to = base.indexOf(targetId)
+        if (to === -1) to = base.length
+        if (after) to += 1
+        base.splice(to, 0, sourceId)
+        setDragId(null)
+        setSessionDrop(null)
+        updateUi({ manualOrder: base, sortBy: 'manual' })
+      }
+
+      const moveSession = (sessionId, delta, group) => {
+        const ids = group.sessions.map((session) => session.id)
+        const at = ids.indexOf(sessionId)
+        const target = ids[at + delta]
+        if (!target) return
+        reorderSession(sessionId, target, delta > 0)
+      }
+
+      const reorderGroup = (sourceKey, targetKey, after) => {
+        if (!sourceKey || !targetKey || sourceKey === targetKey) return
+        const known = new Set(groups.map((group) => group.key))
+        const base = (ui.groupOrder ?? []).filter((key) => known.has(key))
+        for (const group of groups) if (!base.includes(group.key)) base.push(group.key)
+        const from = base.indexOf(sourceKey)
+        if (from === -1) return
+        base.splice(from, 1)
+        let to = base.indexOf(targetKey)
+        if (to === -1) to = base.length
+        if (after) to += 1
+        base.splice(to, 0, sourceKey)
+        setDragGroupKey(null)
+        setGroupDrop(null)
+        updateUi({ groupOrder: base, sortBy: 'manual' })
+      }
+
+      const moveGroupBy = (key, delta) => {
+        const keys = groups.map((group) => group.key)
+        const at = keys.indexOf(key)
+        const target = keys[at + delta]
+        if (target) reorderGroup(key, target, delta > 0)
+      }
+
+      const manual = sortBy === 'manual'
+
+      const endDrag = () => {
+        setDragId(null)
+        setDragGroupKey(null)
+        setSessionDrop(null)
+        setGroupDrop(null)
+        setTip(null)
+      }
+
+      const showTip = (event, text) => {
+        setTip({
+          x: Math.min(event.clientX + 14, window.innerWidth - 300),
+          y: Math.min(event.clientY + 18, window.innerHeight - 90),
+          text,
+        })
+      }
+
+      const moveTip = (event) => {
+        setTip((current) =>
+          current
+            ? {
+                ...current,
+                x: Math.min(event.clientX + 14, window.innerWidth - 300),
+                y: Math.min(event.clientY + 18, window.innerHeight - 90),
+              }
+            : current,
+        )
+      }
+
+      const hideTip = () => setTip(null)
+
+      React.useEffect(() => {
+        const dragging = Boolean(dragId || dragGroupKey)
+        document.body.style.cursor = dragging ? 'grabbing' : ''
+        return () => {
+          document.body.style.cursor = ''
+        }
+      }, [dragId, dragGroupKey])
 
       return h(
         'div',
@@ -1007,6 +1216,34 @@ window.__ModuleLoader__.load({
               h('span', { className: 'iosims-stat' }, h('b', null, free), ` ${t('page.free')}`),
               running ? h('span', { className: 'iosims-stat' }, h('b', null, running), ` ${t('status.running')}`) : null,
               h(
+                'label',
+                {
+                  className: 'iosims-sort',
+                  onMouseEnter: (event) => showTip(event, t(`sort.help.${ui.sortBy ?? 'manual'}`)),
+                  onMouseMove: moveTip,
+                  onMouseLeave: hideTip,
+                },
+                h('span', { className: 'iosims-sort-label' }, t('sort.label')),
+                h(
+                  'select',
+                  {
+                    className: 'iosims-select iosims-sort-select',
+                    value: ui.sortBy ?? 'activity',
+                    'aria-label': t('sort.label'),
+                    onChange: (event) => {
+                      hideTip()
+                      changeSort(event.target.value)
+                    },
+                  },
+                  h('option', { value: 'activity' }, t('sort.activity')),
+                  h('option', { value: 'created' }, t('sort.created')),
+                  h('option', { value: 'title' }, t('sort.title')),
+                  h('option', { value: 'device' }, t('sort.device')),
+                  h('option', { value: 'status' }, t('sort.status')),
+                  h('option', { value: 'manual' }, t('sort.manual')),
+                ),
+              ),
+              h(
                 'button',
                 {
                   className: 'iosims-btn small',
@@ -1026,22 +1263,51 @@ window.__ModuleLoader__.load({
           ),
           snap.error ? h(ErrorBanner, { store, t, message: snap.error }) : null,
           h(
-            'div',
-            { className: 'iosims-toolbar' },
-            h(
-              'label',
-              { className: 'iosims-check' },
-              h('input', {
-                type: 'checkbox',
-                checked: Boolean(ui.onlyAssigned),
-                onChange: (event) => updateUi({ onlyAssigned: event.target.checked }),
-              }),
-              t('filter.assigned'),
-            ),
+            'section',
+            { className: 'iosims-filter', 'aria-label': t('filter.assigned') },
             h(
               'span',
-              { className: 'iosims-foot' },
-              `${sessions.length} ${t('page.sessions')} · ${workspaceCount} ${t('page.workspaces')} · ${sessions.filter((session) => session.assignment).length} ${t('page.bound')}`,
+              { className: 'iosims-filter-icon', 'aria-hidden': true },
+              h(
+                'svg',
+                {
+                  width: 16,
+                  height: 16,
+                  viewBox: '0 0 16 16',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: 1.4,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round',
+                },
+                h('path', { d: 'M2.2 3.2h11.6L9.4 8.6v4.3l-2.8 1.1V8.6z' }),
+              ),
+            ),
+            h(
+              'div',
+              { className: 'iosims-filter-text' },
+              h('div', { className: 'iosims-filter-title' }, t('filter.assigned')),
+              h(
+                'div',
+                { className: 'iosims-filter-sub' },
+                `${sessions.length} ${t('page.sessions')} · ${workspaceCount} ${t('page.workspaces')} · ${sessions.filter((session) => session.activeJob).length} ${t('page.verifying')}`,
+              ),
+            ),
+            h(
+              'label',
+              { className: 'iosims-switch' },
+              h('input', {
+                type: 'checkbox',
+                role: 'switch',
+                checked: Boolean(ui.onlyAssigned),
+                'aria-label': t('filter.assigned'),
+                onChange: (event) => updateUi({ onlyAssigned: event.target.checked }),
+              }),
+              h(
+                'span',
+                { className: 'iosims-switch-track', 'aria-hidden': true },
+                h('span', { className: 'iosims-switch-thumb' }),
+              ),
             ),
           ),
           snap.loading && !state
@@ -1058,7 +1324,7 @@ window.__ModuleLoader__.load({
                     'div',
                     { className: 'iosims-empty' },
                     h('p', { className: 'iosims-empty-title' }, t('empty.title')),
-                    h('p', { className: 'iosims-empty-body' }, t('empty.run')),
+                    h('p', { className: 'iosims-empty-body' }, t('empty.filtered')),
                   )
                 : h(
                   'div',
@@ -1070,6 +1336,72 @@ window.__ModuleLoader__.load({
                       'section',
                       { key: group.key || 'no-workspace', className: 'iosims-group' },
                       h(
+                        'div',
+                        {
+                          className: 'iosims-group-head-row',
+                          'data-dragging': dragGroupKey === group.key ? 'true' : undefined,
+                          'data-drop':
+                            groupDrop && groupDrop.key === group.key && dragGroupKey !== group.key
+                              ? groupDrop.after
+                                ? 'after'
+                                : 'before'
+                              : undefined,
+                          onDragOver: (event) => {
+                            if (!manual || !dragGroupKey) return
+                            event.preventDefault()
+                            event.dataTransfer.dropEffect = 'move'
+                            const rect = event.currentTarget.getBoundingClientRect()
+                            const after = event.clientY > rect.top + rect.height / 2
+                            setGroupDrop((current) =>
+                              current?.key === group.key && current.after === after
+                                ? current
+                                : { key: group.key, after },
+                            )
+                          },
+                          onDragLeave: (event) => {
+                            if (!manual) return
+                            if (event.currentTarget.contains(event.relatedTarget)) return
+                            setGroupDrop((current) => (current?.key === group.key ? null : current))
+                          },
+                          onDrop: (event) => {
+                            if (!manual || !dragGroupKey) return
+                            event.preventDefault()
+                            const rect = event.currentTarget.getBoundingClientRect()
+                            reorderGroup(dragGroupKey, group.key, event.clientY > rect.top + rect.height / 2)
+                          },
+                        },
+                        manual
+                          ? h(
+                              'span',
+                              {
+                                className: 'iosims-group-grip',
+                                draggable: true,
+                                role: 'button',
+                                tabIndex: 0,
+                                title: t('sort.dragGroup'),
+                                'aria-label': t('sort.dragGroup'),
+                                onMouseEnter: (event) => showTip(event, t('sort.help.groupDrag')),
+                                onMouseMove: moveTip,
+                                onMouseLeave: hideTip,
+                                onDragStart: (event) => {
+                                  hideTip()
+                                  event.dataTransfer.effectAllowed = 'move'
+                                  event.dataTransfer.setData('text/plain', group.key)
+                                  const head = event.currentTarget.closest('.iosims-group-head-row')
+                                  if (head) event.dataTransfer.setDragImage(head, 16, 16)
+                                  setDragGroupKey(group.key)
+                                },
+                                onDragEnd: endDrag,
+                                onKeyDown: (event) => {
+                                  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                                  event.preventDefault()
+                                  moveGroupBy(group.key, event.key === 'ArrowUp' ? -1 : 1)
+                                },
+                              },
+                              gripIcon(),
+                            )
+                          : null,
+                        h(
                         'button',
                         {
                           type: 'button',
@@ -1106,6 +1438,7 @@ window.__ModuleLoader__.load({
                               `${groupRunning} ${t('group.running')}`,
                             )
                           : null,
+                        ),
                       ),
                       open
                         ? h(
@@ -1122,6 +1455,30 @@ window.__ModuleLoader__.load({
                                 layoutSelect,
                                 ui,
                                 onUi: updateUi,
+                                manual,
+                                dragging: dragId === session.id,
+                                sessionDragActive: Boolean(dragId),
+                                drop:
+                                  sessionDrop && sessionDrop.id === session.id && dragId !== session.id
+                                    ? sessionDrop
+                                    : null,
+                                onDragStart: () => setDragId(session.id),
+                                onDragEnd: endDrag,
+                                onDragOverRow: (after) => {
+                                  setGroupDrop(null)
+                                  setSessionDrop((current) =>
+                                    current?.id === session.id && current.after === after
+                                      ? current
+                                      : { id: session.id, after },
+                                  )
+                                },
+                                onDragLeaveRow: () =>
+                                  setSessionDrop((current) => (current?.id === session.id ? null : current)),
+                                onDropRow: (after) => reorderSession(dragId, session.id, after),
+                                onMoveBy: (delta) => moveSession(session.id, delta, group),
+                                onTip: showTip,
+                                onTipMove: moveTip,
+                                onTipHide: hideTip,
                               }),
                             ),
                           )
@@ -1138,9 +1495,16 @@ window.__ModuleLoader__.load({
                       ? h('button', { className: 'iosims-btn iosims-more', onClick: () => updateUi({ showAll: false }) }, t('action.less'))
                       : null,
                 ),
-          state ? h(SettingsRow, { settings: state.settings ?? {}, store, t }) : null,
           h('div', { className: 'iosims-foot' }, t('page.foot')),
+          state ? h(SettingsRow, { settings: state.settings ?? {}, store, t }) : null,
         ),
+        tip
+          ? h(
+              'div',
+              { className: 'iosims-tip', role: 'tooltip', style: { left: tip.x, top: tip.y } },
+              tip.text,
+            )
+          : null,
       )
     }
 
@@ -1150,7 +1514,13 @@ window.__ModuleLoader__.load({
       const job = snap.toast
       if (!job) return null
       const title =
-        job.status === 'passed' ? t('toast.passed') : job.status === 'failed' ? t('toast.failed') : t('toast.stopped')
+        job.status === 'blocked'
+          ? t('toast.blocked')
+          : job.status === 'passed'
+            ? t('toast.passed')
+            : job.status === 'failed'
+              ? t('toast.failed')
+              : t('toast.stopped')
       const stats = job.stats
       const duration = formatElapsed((job.endedAt ?? Date.now()) - job.startedAt)
       const result = [

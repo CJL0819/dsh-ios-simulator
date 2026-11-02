@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Simulator Lab",
-    "description": "Binds one iOS Simulator per session, runs builds and UI tests in the background, shows live status, and reminds you to inspect the device when a run finishes."
+    "title": "Simulator Watch",
+    "description": "Watches each session’s iOS Simulator verification started from the conversation and shows a unified live status. It never starts a simulator from the panel."
   }
 }

@@ -24,6 +24,7 @@ const ROUTE = '/dsh-ios-sim'
 const STATE_VERSION = 1
 
 const ACTIVE = new Set(['queued', 'running'])
+const UI_SORTS = ['activity', 'created', 'title', 'device', 'status', 'manual']
 const MAX_JOBS = 60
 const MAX_TAIL_LINES = 400
 
@@ -143,6 +144,9 @@ export function apply(ctx) {
     collapsed: [],
     openLogs: [],
     hiddenShots: [],
+    sortBy: 'activity',
+    manualOrder: [],
+    groupOrder: [],
     updatedAt: 0,
   }
 
@@ -150,6 +154,11 @@ export function apply(ctx) {
   let jobs = []
   /** @type {Map<string, any>} */
   const live = new Map()
+  /** Observed verification runs started by sessions themselves (bash xcodebuild/simctl). */
+  /** @type {Map<string, any>} */
+  const observed = new Map()
+  /** @type {Array<any>} */
+  let observedHistory = []
   let persistTimer = null
 
   // ---------------------------------------------------------------- persistence
@@ -167,6 +176,13 @@ export function apply(ctx) {
         if (typeof parsed.ui.onlyAssigned === 'boolean') ui.onlyAssigned = parsed.ui.onlyAssigned
         if (typeof parsed.ui.showAll === 'boolean') ui.showAll = parsed.ui.showAll
         if (typeof parsed.ui.updatedAt === 'number') ui.updatedAt = parsed.ui.updatedAt
+        if (typeof parsed.ui.sortBy === 'string' && UI_SORTS.includes(parsed.ui.sortBy)) ui.sortBy = parsed.ui.sortBy
+        if (Array.isArray(parsed.ui.manualOrder)) {
+          ui.manualOrder = parsed.ui.manualOrder.filter((value) => typeof value === 'string').slice(0, 500)
+        }
+        if (Array.isArray(parsed.ui.groupOrder)) {
+          ui.groupOrder = parsed.ui.groupOrder.filter((value) => typeof value === 'string').slice(0, 200)
+        }
         for (const key of ['collapsed', 'openLogs', 'hiddenShots']) {
           if (Array.isArray(parsed.ui[key])) {
             ui[key] = parsed.ui[key].filter((value) => typeof value === 'string').slice(-200)
@@ -720,7 +736,7 @@ export function apply(ctx) {
   }
 
   function modeLabel(mode) {
-    return { install: '安装并启动', test: 'UI 测试', build: '构建', command: '自定义命令' }[mode] ?? mode
+    return { install: '安装并启动', test: 'UI 测试', build: '构建', command: '自定义命令', simctl: '模拟器操作' }[mode] ?? mode
   }
 
   function formatDuration(ms) {
@@ -751,17 +767,24 @@ export function apply(ctx) {
 
   async function notify(job) {
     const ok = job.status === 'passed'
+    const blocked = job.status === 'blocked'
     const stopped = job.status === 'stopped'
-    const title = ok ? '✅ 模拟器验证通过' : stopped ? '⏹ 模拟器验证已停止' : '❌ 模拟器验证失败'
+    const title = blocked
+      ? '⛔ 模拟器验证被拦截'
+      : ok
+        ? '✅ 模拟器验证通过'
+        : stopped
+          ? '⏹ 模拟器验证已停止'
+          : '❌ 模拟器验证失败'
     const subtitle = `${job.workspaceName || '—'} · ${job.deviceModel} · ${job.deviceRuntime}${job.scheme ? ` · ${job.scheme}` : ''}`
     const head = `会话「${job.sessionTitle}」· ${modeLabel(job.mode)} · 用时 ${formatDuration(job.endedAt - job.startedAt)}`
     const summaryPart = job.mode === 'command' ? null : job.summary
     const result = [summaryPart, job.detail || job.error].filter(Boolean).join(' · ') ||
-      (ok ? '验证完成，可以打开模拟器验收' : '请打开验证台查看日志')
+      (blocked ? '命令未执行：机型或设备约束' : ok ? '验证完成，可以打开模拟器验收' : '请打开验证台查看日志')
     const body = `${result}\n${head}`
     job.notice = { title, subtitle, body }
     if (!settings.notify) return
-    const script = `display notification ${appleScriptString(body)} with title ${appleScriptString(title)} subtitle ${appleScriptString(subtitle)} sound name ${ok ? '"Glass"' : stopped ? '"Pop"' : '"Basso"'}`
+    const script = `display notification ${appleScriptString(body)} with title ${appleScriptString(title)} subtitle ${appleScriptString(subtitle)} sound name ${blocked ? '"Pop"' : ok ? '"Glass"' : stopped ? '"Pop"' : '"Basso"'}`
     await execCollect(OSASCRIPT, ['-e', script], { timeoutMs: 15000 }).catch(() => {})
   }
 
@@ -956,16 +979,296 @@ export function apply(ctx) {
 
   // ---------------------------------------------------------------- public operations
 
+  // ---------------------------------------------------------------- observed runs
+  //
+  // The panel is an observation surface: sessions start their own
+  // `xcodebuild`/`simctl` work through the normal tool pipeline, and this
+  // plugin watches the committed `tool/call` / `tool/result` events instead of
+  // spawning anything itself.
+
+  function commandOf(args) {
+    if (typeof args === 'string') {
+      try {
+        const parsed = JSON.parse(args)
+        return typeof parsed?.command === 'string' ? parsed.command : args
+      } catch {
+        return args
+      }
+    }
+    if (args && typeof args === 'object' && typeof args.command === 'string') return args.command
+    return ''
+  }
+
+  function verificationKind(command) {
+    if (typeof command !== 'string' || !command) return null
+    if (/\bxcodebuild\b/.test(command) && /\btest\b/.test(command)) return 'test'
+    if (/\bxcodebuild\b/.test(command) && /\bbuild\b/.test(command)) return 'build'
+    if (/\bmake\b/.test(command) && /\b(test|verify)\b/.test(command)) return 'test'
+    if (/\bsimctl\b/.test(command) && /\b(launch|install|spawn|io|boot)\b/.test(command)) return 'simctl'
+    return null
+  }
+
+  function destinationOf(command) {
+    const idMatch =
+      /-destination\s+(?:'|")?[^'"\n]*\bid=([0-9A-Fa-f-]{36})/.exec(command) ||
+      /\b([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\b/.exec(command)
+    const nameMatch = /-destination\s+(?:'|")?[^'"\n]*\bname=([^,'"\n]+)/.exec(command)
+    return {
+      udid: idMatch ? idMatch[1] : null,
+      name: nameMatch ? nameMatch[1].trim() : null,
+    }
+  }
+
+  function startObserved(sessionId, cwd, callId, command, startedAt) {
+    if (!sessionId || !callId) return null
+    const existing = observed.get(callId)
+    if (existing) return existing
+    const kind = verificationKind(command)
+    if (!kind) return null
+    const destination = destinationOf(command)
+    const run = {
+      id: `obs-${callId}`,
+      callId,
+      sessionId,
+      sessionTitle: '',
+      workspaceDir: cwd ?? '',
+      workspaceName: cwd ? basename(cwd) : '',
+      command,
+      mode: kind,
+      deviceUdid: destination.udid,
+      deviceName: destination.name,
+      deviceModel: destination.name,
+      deviceRuntime: null,
+      deviceType: null,
+      status: 'running',
+      step: kind,
+      startedAt: startedAt ?? Date.now(),
+      endedAt: null,
+      exitCode: null,
+      summary: null,
+      detail: null,
+      error: null,
+      notice: null,
+      shot: null,
+      logUrl: null,
+      stats: { passed: 0, failed: 0, failedTests: [], lastError: null },
+      tail: '',
+      lines: 0,
+    }
+    observed.set(callId, run)
+    observedHistory.unshift(run)
+    if (observedHistory.length > 100) observedHistory.length = 100
+    return run
+  }
+
+  function describeObserved(run) {
+    const parts = []
+    if (run.stats?.failed) {
+      parts.push(
+        `${run.stats.failed} 个测试失败` +
+          (run.stats.failedTests.length ? `（${run.stats.failedTests.slice(0, 2).join('、')}）` : ''),
+      )
+    } else if (run.stats?.passed) {
+      parts.push(`${run.stats.passed} 个测试通过`)
+    }
+    if (run.stats?.lastError) parts.push(run.stats.lastError)
+    return parts.join(' · ')
+  }
+
+  async function finishObserved(run, event) {
+    if (!run || run.status !== 'running') return
+    const message = event.data?.message
+    const text = (message?.content ?? [])
+      .filter((block) => block?.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+    run.endedAt = event.time ?? Date.now()
+    run.tail = text.slice(-16000)
+    for (const line of text.split('\n')) {
+      const test = /^test case '(.+?)' (passed|failed)\b/i.exec(line.trim())
+      if (!test) continue
+      if (test[2].toLowerCase() === 'passed') {
+        run.stats.passed += 1
+      } else {
+        run.stats.failed += 1
+        const name = normalizeTestName(test[1]).slice(0, 100)
+        if (run.stats.failedTests.length < 5 && !run.stats.failedTests.includes(name)) {
+          run.stats.failedTests.push(name)
+        }
+      }
+      const errorMatch = /\berror:\s*(.+)$/.exec(line)
+      if (errorMatch && !/\bwarning:/i.test(line)) run.stats.lastError = errorMatch[1].trim().slice(0, 240)
+    }
+    let summary = null
+    if (/\*\* TEST SUCCEEDED \*\*/.test(text)) summary = 'TEST SUCCEEDED'
+    else if (/\*\* TEST FAILED \*\*/.test(text)) summary = 'TEST FAILED'
+    else if (/\*\* BUILD SUCCEEDED \*\*/.test(text)) summary = 'BUILD SUCCEEDED'
+    else if (/\*\* BUILD FAILED \*\*/.test(text)) summary = 'BUILD FAILED'
+    const exitMatch = /\[exit code: (-?\d+)\]/.exec(text)
+    if (exitMatch) run.exitCode = Number(exitMatch[1])
+    const isError = Boolean(message?.isError) || Boolean(event.data?.error)
+    if (/机型约束|设备冲突/.test(text)) {
+      run.status = 'blocked'
+      run.summary = 'BLOCKED'
+      run.detail = '命令未执行：机型约束或设备冲突'
+      run.error = null
+      run.exitCode = null
+      try {
+        const sessions = await listSessions()
+        run.sessionTitle = sessions.find((session) => session.id === run.sessionId)?.title ?? run.sessionTitle
+      } catch {}
+      await resolveRunDevice(run)
+      await notify(run)
+      return
+    }
+    run.status = summary
+      ? summary.includes('FAILED')
+        ? 'failed'
+        : 'passed'
+      : isError || run.stats.failed || (run.exitCode !== null && run.exitCode !== 0)
+        ? 'failed'
+        : 'passed'
+    run.summary =
+      summary ??
+      (run.mode === 'test' ? (run.status === 'passed' ? 'TEST SUCCEEDED' : 'TEST FAILED') : run.status === 'passed' ? 'SUCCEEDED' : 'FAILED')
+    run.detail = describeObserved(run)
+    if (isError && !run.error) run.error = run.stats.lastError || '命令返回错误'
+    try {
+      const sessions = await listSessions()
+      run.sessionTitle = sessions.find((session) => session.id === run.sessionId)?.title ?? run.sessionTitle
+    } catch {}
+    await resolveRunDevice(run)
+    await notify(run)
+  }
+
+  async function resolveRunDevice(run) {
+    try {
+      const devices = await listDevices()
+      let device = run.deviceUdid ? devices.find((item) => item.udid === run.deviceUdid) : null
+      if (!device && run.deviceName) device = devices.find((item) => item.name === run.deviceName)
+      if (device) {
+        run.deviceUdid = device.udid
+        run.deviceName = device.name
+        run.deviceModel = device.model
+        run.deviceRuntime = device.runtime
+        run.deviceType = device.deviceType
+      }
+    } catch {}
+  }
+
+  function publicObserved(run, byUdid, binding, conflictOwner) {
+    if (!run) return null
+    if (byUdid) {
+      let device = run.deviceUdid ? byUdid.get(run.deviceUdid) : null
+      if (!device && run.deviceName) device = [...byUdid.values()].find((item) => item.name === run.deviceName)
+      if (device) {
+        run.deviceUdid = device.udid
+        run.deviceName = device.name
+        run.deviceModel = device.model
+        run.deviceRuntime = device.runtime
+        run.deviceType = device.deviceType
+      }
+    }
+    let assumedDevice = false
+    if (!run.deviceUdid && binding) {
+      run.deviceUdid = binding.udid
+      run.deviceName = binding.name
+      run.deviceModel = binding.model ?? byUdid?.get(binding.udid)?.model ?? binding.name
+      run.deviceRuntime = binding.runtime
+      assumedDevice = true
+    }
+    const mismatch = Boolean(run.deviceUdid && binding?.udid && run.deviceUdid !== binding.udid)
+    const conflict = Boolean(conflictOwner)
+    const now = run.endedAt ?? Date.now()
+    return {
+      id: run.id,
+      assignedUdid: binding?.udid ?? null,
+      assignedModel: binding?.model ?? binding?.name ?? null,
+      mismatch,
+      assumedDevice,
+      conflict,
+      conflictWith: conflictOwner?.sessionId ?? null,
+      sessionId: run.sessionId,
+      sessionTitle: run.sessionTitle,
+      deviceUdid: run.deviceUdid ?? null,
+      deviceName: run.deviceName ?? null,
+      deviceModel: run.deviceModel ?? run.deviceName ?? null,
+      deviceRuntime: run.deviceRuntime ?? null,
+      deviceType: run.deviceType ?? null,
+      workspace: run.workspaceDir,
+      workspaceName: run.workspaceName,
+      mode: run.mode,
+      scheme: null,
+      status: run.status,
+      step: run.step,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      durationMs: run.startedAt ? Math.max(0, now - run.startedAt) : 0,
+      exitCode: run.exitCode ?? null,
+      summary: run.summary ?? null,
+      detail: run.detail ?? null,
+      stats: run.stats ?? null,
+      notice: run.notice ?? null,
+      error: run.error ?? null,
+      command: run.command ?? null,
+      shot: null,
+      logUrl: null,
+      tail: run.tail ?? '',
+    }
+  }
+
+  function recoverObserved(targetAgent) {
+    const agents = targetAgent ? [targetAgent] : (ctx.get('agents')?.list?.() ?? [])
+    for (const agent of agents) {
+      const session = agent?.session
+      const events = session?.events
+      if (!Array.isArray(events)) continue
+      const sessionId = session.id ?? session.header?.id ?? agent.id
+      if (!sessionId) continue
+      const done = new Set()
+      for (const event of events) {
+        const callId = event?.data?.message?.source?.callId
+        if (event?.type === 'tool/result' && callId) done.add(callId)
+      }
+      for (const event of events.slice(-300)) {
+        if (event?.type !== 'tool/call') continue
+        const { callId, name, arguments: raw } = event.data ?? {}
+        if (!callId || done.has(callId)) continue
+        if (name !== 'bash' && name !== 'terminal') continue
+        const command = commandOf(raw)
+        startObserved(sessionId, session.header?.cwd, callId, command, event.time)
+      }
+    }
+  }
+
   /** @param {string} sessionId */
   async function sessionsWithState() {
     const [devices, sessions] = await Promise.all([listDevices(), listSessions()])
-    const deviceById = new Map(devices.map((device) => [device.udid, device]))
+    const byUdid = new Map(devices.map((device) => [device.udid, device]))
     const result = sessions.map((session) => {
       const binding = assignmentOf(session.id)
-      const bindingDevice = binding ? deviceById.get(binding.udid) : undefined
-      const active = activeJobForSession(session.id)
-      const latest = recentJobsForSession(session.id)[0]
-      const remembered = prefs.get(session.id) ?? {}
+      const bindingDevice = binding ? byUdid.get(binding.udid) : null
+      const runs = observedHistory.filter((run) => run.sessionId === session.id)
+      const active = runs.find((run) => run.status === 'running')
+      const latest = runs[0]
+      const run = active ?? latest
+      if (run) run.sessionTitle = session.title
+      const conflictOwner = run?.deviceUdid
+        ? [...assignments.entries()].find(([id, value]) => id !== session.id && value.udid === run.deviceUdid)
+        : null
+      const conflictingRun = run?.deviceUdid
+        ? observedHistory.find(
+            (item) =>
+              item.status === 'running' &&
+              item.sessionId !== session.id &&
+              item.deviceUdid === run.deviceUdid,
+          )
+        : null
+      const conflict = conflictOwner
+        ? { sessionId: conflictOwner[0] }
+        : conflictingRun
+          ? { sessionId: conflictingRun.sessionId }
+          : null
       return {
         ...session,
         workspace: session.cwd || '',
@@ -974,20 +1277,16 @@ export function apply(ctx) {
           ? {
               udid: binding.udid,
               name: binding.name,
-              model: binding.model ?? binding.name,
+              model: binding.model ?? bindingDevice?.model ?? binding.name,
               runtime: binding.runtime,
               auto: Boolean(binding.auto),
               stale: !bindingDevice,
               state: bindingDevice?.state ?? 'Unavailable',
             }
           : null,
-        activeJob: active ? publicJob(active) : null,
-        lastJob: !active && latest ? publicJob(latest) : null,
-        runOptions: {
-          mode: remembered.mode ?? latest?.mode ?? 'install',
-          scheme: remembered.scheme ?? latest?.scheme ?? '',
-          command: remembered.command ?? '',
-        },
+        activeJob: active ? publicObserved(active, byUdid, binding, conflict) : null,
+        lastJob: !active && latest ? publicObserved(latest, byUdid, binding, null) : null,
+        runOptions: { mode: 'test', scheme: '', command: '' },
       }
     })
     return { devices, sessions: result }
@@ -995,26 +1294,43 @@ export function apply(ctx) {
 
   async function snapshot() {
     const { devices, sessions } = await sessionsWithState()
-    const boundBy = new Map()
+    const byUdid = new Map(devices.map((device) => [device.udid, device]))
+    const runningByDevice = new Map()
+    for (const run of observedHistory) {
+      if (run.status !== 'running' || !run.deviceUdid) continue
+      const session = sessions.find((item) => item.id === run.sessionId)
+      runningByDevice.set(run.deviceUdid, {
+        sessionId: run.sessionId,
+        title: session?.title ?? run.sessionId.slice(0, 6),
+      })
+    }
+    const assignedBy = new Map()
     for (const [sessionId, binding] of assignments) {
       const session = sessions.find((item) => item.id === sessionId)
-      boundBy.set(binding.udid, { sessionId, title: session?.title ?? sessionId.slice(0, 6) })
+      assignedBy.set(binding.udid, {
+        sessionId,
+        title: session?.title ?? sessionId.slice(0, 6),
+        model: binding.model ?? binding.name,
+      })
     }
     return {
       now: Date.now(),
       settings: { ...settings },
       devices: devices.map((device) => ({
         ...device,
-        boundTo: boundBy.get(device.udid) ?? null,
-        busy: Boolean(activeJobForDevice(device.udid)),
+        boundTo: runningByDevice.get(device.udid) ?? null,
+        assignedTo: assignedBy.get(device.udid) ?? null,
+        busy: runningByDevice.has(device.udid),
       })),
       sessions,
-      jobs: jobs.slice(0, 20).map(publicJob),
+      jobs: observedHistory.slice(0, 20).map((run) => publicObserved(run, byUdid, assignments.get(run.sessionId))),
       ui: {
         ...ui,
         collapsed: [...ui.collapsed],
         openLogs: [...ui.openLogs],
         hiddenShots: [...ui.hiddenShots],
+        manualOrder: [...ui.manualOrder],
+        groupOrder: [...ui.groupOrder],
       },
       version: STATE_VERSION,
     }
@@ -1032,6 +1348,12 @@ export function apply(ctx) {
     }
     const device = await findDevice(udid)
     if (!device) return { ok: false, error: { code: 'device_not_found', message: '找不到该模拟器' } }
+    const busy = observedHistory.find(
+      (run) => run.status === 'running' && run.sessionId !== sessionId && run.deviceUdid === udid,
+    )
+    if (busy) {
+      return { ok: false, error: { code: 'device_busy', message: '该设备正在被另一个会话的验证占用' } }
+    }
     const owner = [...assignments.entries()].find(([id, value]) => id !== sessionId && value.udid === udid)
     if (owner) {
       const sessions = await listSessions()
@@ -1167,6 +1489,13 @@ export function apply(ctx) {
       case 'ui': {
         if (typeof payload.onlyAssigned === 'boolean') ui.onlyAssigned = payload.onlyAssigned
         if (typeof payload.showAll === 'boolean') ui.showAll = payload.showAll
+        if (typeof payload.sortBy === 'string' && UI_SORTS.includes(payload.sortBy)) ui.sortBy = payload.sortBy
+        if (Array.isArray(payload.manualOrder)) {
+          ui.manualOrder = payload.manualOrder.filter((value) => typeof value === 'string').slice(0, 500)
+        }
+        if (Array.isArray(payload.groupOrder)) {
+          ui.groupOrder = payload.groupOrder.filter((value) => typeof value === 'string').slice(0, 200)
+        }
         for (const key of ['collapsed', 'openLogs', 'hiddenShots']) {
           if (Array.isArray(payload[key])) {
             ui[key] = payload[key].filter((value) => typeof value === 'string').slice(-200)
@@ -1469,10 +1798,88 @@ export function apply(ctx) {
 
   // ---------------------------------------------------------------- registration
 
-  ctx.effect(() => ctx.tools.register(TOOL), 'ios-simulator: tool')
   ctx.effect(
     () => ctx.webServer.register({ kind: 'prefix', path: ROUTE, handler: handle }),
     'ios-simulator: http routes',
+  )
+  ctx.effect(
+    () =>
+      ctx.on('session/event', (session, event) => {
+        try {
+          const sessionId = session?.id ?? session?.header?.id
+          if (!sessionId || !event?.data) return
+          if (event.type === 'tool/call') {
+            const { callId, name, arguments: raw } = event.data
+            if (!callId || (name !== 'bash' && name !== 'terminal')) return
+            startObserved(sessionId, session.header?.cwd, callId, commandOf(raw), event.time)
+          } else if (event.type === 'tool/result') {
+            const callId = event.data?.message?.source?.callId
+            const run = callId ? observed.get(callId) : null
+            if (run) finishObserved(run, event).catch(() => {})
+          }
+        } catch {}
+      }),
+    'ios-simulator: observation',
+  )
+  ctx.effect(
+    () =>
+      ctx.tools.guard((exec) => {
+        try {
+          if (exec.name !== 'bash' && exec.name !== 'terminal') return undefined
+          const sessionId = exec.agent?.id
+          if (!sessionId) return undefined
+          const command = commandOf(exec.arguments)
+          if (!verificationKind(command)) return undefined
+          const target = destinationOf(command)
+          if (!target.udid && target.name && devicesCache) {
+            const matched = devicesCache.value.find((device) => device.name === target.name)
+            if (matched) target.udid = matched.udid
+          }
+          if (!target.udid) return undefined
+          // A device reserved by another session is unavailable even when this
+          // session has no assignment yet.
+          const owner = [...assignments.entries()].find(([id, value]) => id !== sessionId && value.udid === target.udid)
+          if (owner) {
+            return `设备冲突：该模拟器已指定给另一个会话（${owner[0].slice(0, 12)}），请让该会话使用，或在面板中调整指定机型。`
+          }
+          const binding = assignments.get(sessionId)
+          if (!binding) return undefined
+          if (target.udid !== binding.udid) {
+            return `机型约束：本会话指定 ${binding.model ?? binding.name}（${binding.udid}），命令目标是 ${target.udid}。请改用指定设备，或在面板中调整指定机型。`
+          }
+          const busy = observedHistory.find(
+            (run) => run.status === 'running' && run.sessionId !== sessionId && run.deviceUdid === target.udid,
+          )
+          if (busy) {
+            return `设备冲突：${binding.model ?? binding.name} 正在被另一个会话的验证占用，请等待完成或改用其他设备。`
+          }
+          return undefined
+        } catch {
+          return undefined
+        }
+      }),
+    'ios-simulator: device guard',
+  )
+  ctx.effect(() => {
+    const timer = setTimeout(() => {
+      try {
+        recoverObserved()
+      } catch {}
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, 'ios-simulator: observation recovery')
+  ctx.effect(
+    () =>
+      ctx.on('agent/created', (payload) => {
+        const agent = payload?.agent
+        if (!agent) return
+        setTimeout(() => {
+          try {
+            recoverObserved(agent)
+          } catch {}
+        }, 800)
+      }),
+    'ios-simulator: observation agent recovery',
   )
   ctx.effect(() => () => {
     for (const job of live.values()) {

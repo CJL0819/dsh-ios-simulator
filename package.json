@@ -2,7 +2,7 @@
   "name": "@local/dsh-ios-simulator",
   "version": "1.0.0",
   "private": true,
-  "description": "Per-session iOS Simulator verification: bind one simulator per DSH session, run builds/UI tests in the background, watch status, and get reminded to inspect the device.",
+  "description": "Observe per-session iOS Simulator verification: scan workspace groups and sessions, detect xcodebuild/simctl runs started by a session, and show one unified live status without launching anything from the panel.",
   "type": "module",
   "exports": {
     ".": "./index.js",

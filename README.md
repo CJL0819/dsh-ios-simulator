@@ -1,123 +1,77 @@
-# 模拟器验证台 · iOS Simulator Lab
+# 模拟器验证台 · Simulator Watch
 
-一个 DSH 插件：**每个会话独占一台 iOS 模拟器**，在后台跑构建 / 安装 / UI 测试，实时查看状态，完成后通过系统通知和应用内提醒叫你回模拟器验收。
+一个 DSH 插件：**扫描工作区分组与会话，观测会话里发起的 iOS 模拟器验证，统一显示状态。**
+面板只做观测，不启动模拟器、不跑构建、不占用会话。
 
-- 侧栏入口：左侧栏的 `模拟器验证台` 图标（面板 id `ios-sim`，顺序 20，位于「任务调度」之后）。
-- 智能体工具：`ios_simulator`（`list` / `assign` / `run` / `status` / `stop` / `open` / `screenshot`）。
+- 侧栏入口：左侧栏的「模拟器验证台」图标（面板 id `ios-sim`）。
+- 不提供「开始验证」「绑定设备」「停止」等操作；验证由会话自己（agent 的 bash / terminal 工具）发起。
 
-## 为什么不会互相阻断
+## 它显示什么
 
-- 会话与设备一一绑定；同一会话同时只允许一个验证任务，同一设备也同时只服务一个会话。
-- `run` 立即返回 job id，构建与测试在 Host 进程里异步执行，不占住对话。
-- 默认自动挑选**空闲且已关闭的 iPhone**（最新运行时优先），不会动你正在看的模拟器。
-- 两个会话并行验证时会落在两台不同的设备上；设备被占用时面板会禁用该选项并给出原因。
+对每个工作区、每个会话：
 
-## 工作区分组
+- 当前是否在验证（运行中 / 通过 / 失败 / 未验证）；
+- 验证类型（UI 测试 / 构建 / simctl 操作）；
+- 识别出的模拟器（机型、运行时、UDID，来自命令的 `-destination` 或命令行里的 UDID）；
+- 已运行时长；完成后显示通过/失败、通过/失败用例数、失败用例名、最后一条 `error:`；
+- 会话实际执行的命令（截断显示），可展开查看输出末尾。
 
-面板按会话的**工作区目录**分组：组头显示目录名、`~/...` 路径、会话数和正在验证的数量，可折叠。同一目录下的多个会话（例如 `~/Downloads` 里的 5 个会话）收在同一个组里，组与组之间按“有任务 > 有绑定 > 最近活动”排序。筛选“只看已绑定设备”后，空组会自动隐藏。
+## 会话指定机型与冲突约束
 
-## 面板状态会记住
+每个会话可以在面板里指定一台模拟器（机型 + UDID），用来把会话的推送/测试固定到一台设备：
 
-切换面板、刷新页面、甚至 Web 端口变化后重启，下面这些选择都不会被重置：
+- 指定后，Host 注册一个工具 guard：会话里的 `bash` / `terminal` 如果执行
+  `xcodebuild … -destination id=<其他设备>`、`simctl … <其他 UDID>`，会被**拒绝执行**并返回原因；
+- 某台设备已指定给其他会话时，任何会话试图使用它都会被拒绝，避免两个会话同时占一台机器；
+- 正在被另一个会话的验证占用时也会拒绝；
+- 被拒绝的尝试仍会出现在面板里，状态为「已拦截」，并标出「机型不符」/「设备冲突」，方便回看；
+- 面板里每行都有「指定机型」下拉，已被其他会话占用的设备显示为不可选。
 
-- 「只看已绑定设备」筛选和「显示全部会话」
-- 工作区分组的折叠状态
-- 哪些任务的日志是展开的
-- 哪些任务的截图被手动收起（有截图的任务默认展开）
+如果会话指定了机型、但命令里没有写 `-destination`（例如 `make test`），面板会按指定机型展示并标记「按指定机型」；guard 不会拦截这类命令。
 
-保存分两层：Host 的 `data/ios-simulator/state.json`（带 `updatedAt`，跨端口/重启存活）和浏览器 localStorage（同页面内立即恢复）。面板挂载时取较新的一份，旧缓存不会覆盖新选择；任务本身的运行状态始终以 Host 为准。
+## 状态从哪里来
 
-## 机型锁定（不会偷偷换机）
+Host 监听 DSH 的 `session/event`：
 
-一旦你给会话选了具体设备，它就锁定到**该设备 + 该机型**：
+1. `tool/call`：如果工具是 `bash` / `terminal`，且命令包含
+   - `xcodebuild … test` / `xcodebuild … build`
+   - `make test` / `make verify`
+   - `simctl launch|install|spawn|io|boot`
+   就登记一条运行中的观测记录。
+2. `tool/result`：同一个 `callId` 返回时，解析输出里的
+   `** TEST SUCCEEDED/FAILED **`、`** BUILD SUCCEEDED/FAILED **`、
+   `Test Case '…' passed/failed`、`[exit code: N]`、`error:`，得到最终状态与统计。
 
-- `run` 前先做 `simctl` 预检：UDID、机型标识（`deviceTypeIdentifier`）、运行时逐一比对，日志第一行会打印
-  `· 机型锁定：iPhone 15 Pro（iPhone 15 Pro）· iOS 17.0 · <UDID>`。
-  身份以 `deviceTypeIdentifier` + UDID 为准，所以给模拟器改名不会误判，换机型一定会被拦下。
-- 绑定的设备被删除或机型对不上时**直接报错中止**，不会自动改绑到别的机型。
-- `xcodebuild` 使用 `-destination platform=iOS Simulator,id=<UDID>`，并强制
-  `-parallel-testing-enabled NO`，避免克隆机/并发目标把测试分到别的机子上。
-- 如果日志里出现 `Using the first of multiple matching destinations`，任务直接判失败。
-- 启动后再复查一次该 UDID 是否处于 `Booted`，安装、启动、截图都只用这个 UDID。
+插件启动时还会扫描当前 live 会话最近的事件，尽量恢复正在运行的验证。
+**不会启动任何进程**。
 
-## 面板能做什么
+## 面板交互
 
-- 按会话列出当前绑定设备、运行状态、步骤（启动/构建/测试/安装/启动 App/截图）与耗时。
-- 每行可切换设备（或「自动分配」）、选择验证方式、覆盖 Scheme、启动/停止、打开模拟器。
-- 展开可看日志末尾、完整日志链接、验证完成时的模拟器截图。
-- 底部设置：完成通知、完成后自动打开模拟器、未绑定时自动分配。
+- 工作区分组、会话状态、命令与输出；「只看正在验证」筛选。
+- 排序：最近活动 / 创建时间 / 名称 / 机型 / 状态 / 默认顺序。
+- 默认顺序：拖动会话调整组内顺序，拖动目录调整分组顺序；顺序持久化。
+- 悬停排序控件显示当前排序规则；悬停手柄显示拖动范围。
+- 完成时可选系统通知（面板底部「通知」）。
 
-验证方式：
+## 数据
 
-| 模式 | 行为 |
-| --- | --- |
-| `install`（默认） | `xcodebuild build` → 启动模拟器 → 安装 → 启动 App → 等待 1.6s 截图 |
-| `test` | `xcodebuild test`（UI 测试），结束后截图 |
-| `build` | 只构建，不启动模拟器、不截图 |
-| `command` | 在会话目录执行自定义命令，导出 `$DSH_SIM_UDID` / `$DSH_SIM_NAME`，结束后截图 |
-
-结果会从 xcodebuild 输出里解析通过/失败用例数、失败用例名和最后一条 `error:`；即使退出码是 0，只要出现失败用例也会判为失败，提醒不会“报喜不报忧”。
-
-工程与 Scheme 默认从会话目录自动识别（`*.xcworkspace` > `*.xcodeproj`，再跑 `xcodebuild -list -json`）；也可在面板或工具里显式指定 `project` / `workspace` / `scheme`。
-
-## 完成提醒
-
-任务结束时：
-
-1. **macOS 系统通知**：
-   - 标题：`✅ 模拟器验证通过` / `❌ 模拟器验证失败` / `⏹ 模拟器验证已停止`
-   - 副标题：`工作区 · 机型 · 运行时 · Scheme`
-   - 正文：`会话「…」· 验证方式 · 用时 2:31`，第二行是结果，如
-     `TEST FAILED · 2 个测试失败（…）· <最后一条 error>`
-   - 成功用 Glass、失败用 Basso、停止用 Pop 提示音。
-2. **应用内提示**：显示工作区、会话、机型/运行时、Scheme、用时、通过/失败数、失败用例、错误摘要，
-   并附上本次运行的模拟器截图缩略图；按钮为「查看」「打开模拟器」「知道了」。
-3. 侧栏图标出现红点，直到你打开面板。
-
-通知默认开启，可在面板底部关闭；关闭后系统通知不发，但应用内提示和历史记录仍然保留。手动停止也会发一条“已停止”通知。
-
-## 数据位置
-
-```
-$DSH_PROFILE_DIR/data/ios-simulator/
-├── state.json          # 会话绑定与偏好（重启后保留）
-├── history.json        # 最近 60 次任务摘要
-├── runs/job-*.log      # 每次任务的完整日志
-├── shots/job-*.png     # 完成时的模拟器截图
-└── derived/<udid>/     # 按设备隔离的 DerivedData（增量构建）
-```
-
-没有设置 `DSH_PROFILE_DIR` 时回退到 `~/.dsh/data/ios-simulator/`。
-
-## HTTP 接口（面板使用）
-
-Host 在 `ctx.webServer` 上注册 `/dsh-ios-sim` 前缀路由：
-
-- `GET /dsh-ios-sim/state` — 设备、会话、绑定、任务快照。
-- `POST /dsh-ios-sim/action` — `assign` / `run` / `stop` / `open` / `screenshot` / `settings` / `refresh`。
-- `GET /dsh-ios-sim/shot/<file>.png` — 截图。
-- `GET /dsh-ios-sim/log/<jobId>` — 纯文本日志。
-
-POST 会校验 `Origin` 必须等于本机 Web 服务地址；路由本身不携带业务鉴权，因此只在回环监听（默认）下使用。
-
-## 安装与更新
-
-已作为本地 bundle 安装在 `desktop` profile：
-
-```
-~/.dsh/profiles/desktop/package.json  →  bundles: @local/dsh-ios-simulator
-```
-
-修改 Host 代码（`index.js`）后，在插件管理中关闭再启用该 bundle 即可重新导入，无需重启 Harness；修改 `client.js` 由前端 HMR 自动生效。
-
-> 注意：重新加载会终止正在运行的验证任务，任务会记为失败/中断。
+- 面板偏好：`$DSH_PROFILE_DIR/data/ios-simulator/state.json`（`ui` 字段）。
+- 观测记录只保存在 Host 内存中：重载插件会清空已完成记录；正在运行且能恢复的验证会重新出现。
+- 不再产生 `runs/` 日志或截图；输出末尾取自会话的 `tool/result` 内容。
 
 ## 已知限制
 
-- 仅 macOS + Xcode 环境；非 Web profile（无 `webServer`）不会激活。
-- 只识别本机 `xcrun simctl` 可见的模拟器，不管理真机。
-- 截图在 App 启动后 1.6 秒拍摄；如果首屏更慢，图里可能是启动页，可稍后用「截图」再拍一次。
-- 失败用例名来自 xcodebuild 文本输出（兼容新旧两种 `Test Case` 格式，旧格式会转成 `Class.testName`），只在解析到时展示。
-- 通知正文第一行是结果摘要，第二行是会话/验证方式/用时；即使正文被折叠，标题与副标题仍能看出机型和工作区。
-- 系统通知依赖 macOS 对宿主 App 的通知授权；授权缺失时仍有应用内提示。
-- 没有做设备「归还」的自动回收：会话长期不用时绑定会保留，可在面板中切回「自动分配」。
+- 只识别工具参数里**字面出现**的 `xcodebuild` / `simctl` / `make test`；把命令藏进脚本或变量里无法识别。
+- 以 `run_in_background` 方式启动的 bash 命令，在工具返回时观测就结束（后台进程继续跑，但插件拿不到后续输出）。
+- 拿不到插件启动之外的截图；要截图请在会话里自行 `simctl io … screenshot`。
+- 观测依赖 `session/event` 的实时投递；插件重载后已完成的记录不补扫。
+
+## 安装
+
+已作为本地 bundle 安装在 `desktop` profile，源码链接到本目录：
+
+```
+~/.dsh/profiles/desktop/node_modules/@local/dsh-ios-simulator -> <this directory>
+```
+
+修改 Host 代码后，在插件管理中关闭再启用该 bundle 即可重新导入；`client.js` 由前端 HMR 生效。
