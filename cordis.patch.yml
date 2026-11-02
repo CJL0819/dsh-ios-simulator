@@ -1,0 +1,3 @@
+- insert:
+    - id: ios-simulator
+      name: '@local/dsh-ios-simulator'

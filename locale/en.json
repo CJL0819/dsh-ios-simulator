@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Simulator Lab",
+    "description": "Binds one iOS Simulator per session, runs builds and UI tests in the background, shows live status, and reminds you to inspect the device when a run finishes."
+  }
+}
